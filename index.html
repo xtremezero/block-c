@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Block-C: Visual C Editor</title>
+    <!-- Tailwind CSS for UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Blockly core -->
+    <script src="https://unpkg.com/blockly/blockly.min.js"></script>
+    <!-- Highlight.js for C syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-light.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/c.min.js"></script>
+    <style>
+        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #f8fafc; color: #334155; }
+        .blocklyToolboxDiv { background-color: #ffffff !important; border-right: 1px solid #e2e8f0; padding-top: 8px; }
+        .blocklyTreeRow { padding: 4px 0; border-radius: 6px; margin: 0 8px; }
+        .blocklyTreeRow:hover { background-color: #f1f5f9 !important; }
+        .blocklyTreeSelected { background-color: #e2e8f0 !important; }
+        .blocklyTreeLabel { color: #475569 !important; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 14px; font-weight: 500; }
+        .blocklyFlyoutBackground { fill: #f8fafc !important; fill-opacity: 0.95 !important; }
+        #blocklyDiv { height: 100%; width: 100%; }
+        
+        /* Fix Blockly Flyout/Drawer Ghost Scrollbars caused by CSS framework resets */
+        .blocklyFlyoutScrollbar { display: none !important; }
+        .blocklyFlyout { scrollbar-width: none; -ms-overflow-style: none; }
+        .blocklyFlyout::-webkit-scrollbar { display: none; }
+
+        /* Style the Toolbox category list scrollbar */
+        .blocklyToolboxDiv::-webkit-scrollbar { width: 6px; }
+        .blocklyToolboxDiv::-webkit-scrollbar-track { background: transparent; }
+        .blocklyToolboxDiv::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .blocklyToolboxDiv::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Custom scrollbar scoped to avoid Blockly drawer artifacts */
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; border: 2px solid #f8fafc; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="h-screen flex flex-col font-sans">
+
+    <!-- Header -->
+    <header class="bg-white/80 backdrop-blur-md border-b border-gray-200 p-3 md:p-4 flex flex-col sm:flex-row justify-between items-center z-10 shadow-sm gap-3">
+        <div class="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 md:w-9 md:h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex justify-center items-center font-bold text-white shadow-md">C</div>
+                <h1 class="text-lg md:text-xl font-semibold tracking-tight text-gray-900">Block-C</h1>
+            </div>
+        </div>
+        <div class="flex flex-wrap justify-center sm:justify-end items-center gap-2 w-full sm:w-auto">
+            <span id="importStatus" class="text-xs text-emerald-600 font-medium hidden px-2 w-full text-center sm:w-auto mb-2 sm:mb-0"></span>
+            
+            <button onclick="saveWorkspace()" class="text-xs md:text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 hover:text-gray-900 px-3 py-1.5 md:px-4 md:py-2 rounded-lg cursor-pointer transition-all shadow-sm text-center">
+                Save
+            </button>
+            <label class="text-xs md:text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 hover:text-gray-900 px-3 py-1.5 md:px-4 md:py-2 rounded-lg cursor-pointer transition-all shadow-sm text-center">
+                Load
+                <input type="file" id="workspaceUpload" accept=".json" class="hidden">
+            </label>
+
+            <label class="text-xs md:text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 md:px-4 md:py-2 rounded-lg cursor-pointer transition-all shadow-sm text-center">
+                Import .h
+                <input type="file" id="headerUpload" accept=".h" class="hidden">
+            </label>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex flex-col md:grid md:grid-cols-[2fr_1fr] overflow-hidden flex-1">
+        <!-- Blockly Left Pane -->
+        <div class="relative flex-1 min-h-[50vh] md:min-h-0" id="blocklyArea">
+            <div id="blocklyDiv" class="absolute inset-0"></div>
+        </div>
+
+        <!-- Code Output Right Pane -->
+        <div class="flex flex-col h-[35vh] md:h-auto md:grid md:grid-rows-[auto_1fr] bg-[#fafafa] border-t md:border-t-0 md:border-l border-gray-200 min-h-0">
+            <div class="bg-white py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-gray-200 flex justify-between items-center shadow-sm z-10">
+                <span class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                    Generated source.c
+                </span>
+                <button onclick="copyCode()" class="text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer p-1.5 rounded-md hover:bg-indigo-50" title="Copy Code">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                </button>
+            </div>
+            <div class="custom-scrollbar flex-1 md:overflow-auto p-4 md:p-5 text-[13px] font-mono leading-relaxed relative text-slate-800 overflow-y-auto">
+                <pre><code id="codeOutput" class="language-c bg-transparent p-0 block h-full whitespace-pre"></code></pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toolbox XML (Hidden) -->
+    <xml id="toolbox" style="display: none">
+        <category name="Program Structure" colour="#4C97FF">
+            <block type="c_include"></block>
+            <block type="c_main"></block>
+            <block type="c_printf"></block>
+        </category>
+        <category name="Variables & Data" colour="#FF8C1A">
+            <block type="c_declare"></block>
+            <block type="c_struct_union_enum"></block>
+            <block type="c_typedef"></block>
+            <block type="c_number"></block>
+            <block type="c_string"></block>
+            <block type="c_sizeof"></block>
+        </category>
+        <category name="Control Flow" colour="#FFCC33">
+            <block type="c_if"></block>
+            <block type="c_switch"></block>
+            <block type="c_case"></block>
+        </category>
+        <category name="Loops" colour="#0FBD8C">
+            <block type="c_for"></block>
+            <block type="c_while"></block>
+            <block type="c_do_while"></block>
+        </category>
+        <category name="Jumps (Keywords)" colour="#FF6680">
+            <block type="c_break"></block>
+            <block type="c_continue"></block>
+            <block type="c_return"></block>
+            <block type="c_goto"></block>
+            <block type="c_label"></block>
+        </category>
+        <category name="Operators" colour="#59C059">
+            <block type="c_math"></block>
+            <block type="c_compare"></block>
+            <block type="c_logic"></block>
+        </category>
+        <category name="Functions" custom="PROCEDURE" colour="#995ba5"></category>
+        <category name="Local Vars" custom="VARIABLE" colour="#a55b80"></category>
+    </xml>
+
+    <script>
+        // --- 1. Custom Block Definitions ---
+        
+        Blockly.Blocks['c_include'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("#include <")
+                    .appendField(new Blockly.FieldTextInput("stdio.h"), "LIB")
+                    .appendField(">");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#4C97FF');
+            }
+        };
+
+        Blockly.Blocks['c_main'] = {
+            init: function() {
+                this.appendDummyInput().appendField("int main() {");
+                this.appendStatementInput("BODY").setCheck(null);
+                this.appendDummyInput().appendField("return 0; }");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#4C97FF');
+            }
+        };
+
+        Blockly.Blocks['c_printf'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("printf(\"")
+                    .appendField(new Blockly.FieldTextInput("Hello, World!\\n"), "TEXT")
+                    .appendField("\");");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#4C97FF');
+            }
+        };
+
+        Blockly.Blocks['c_declare'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField(new Blockly.FieldDropdown([["(auto)","auto"], ["register","register"], ["static","static"], ["extern","extern"]]), "STORAGE")
+                    .appendField(new Blockly.FieldDropdown([["(none)",""], ["const","const"], ["volatile","volatile"]]), "MODIFIER")
+                    .appendField(new Blockly.FieldDropdown([["int","int"], ["float","float"], ["double","double"], ["char","char"], ["void","void"], ["short","short"], ["long","long"], ["signed","signed"], ["unsigned","unsigned"]]), "TYPE")
+                    .appendField(new Blockly.FieldTextInput("myVar"), "NAME");
+                this.appendValueInput("VAL").setCheck(null).appendField("=");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#FF8C1A');
+            }
+        };
+
+        Blockly.Blocks['c_struct_union_enum'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField(new Blockly.FieldDropdown([["struct","struct"], ["union","union"], ["enum","enum"]]), "TYPE")
+                    .appendField(new Blockly.FieldTextInput("MyType"), "NAME")
+                    .appendField("{");
+                this.appendStatementInput("BODY").setCheck(null);
+                this.appendDummyInput().appendField("};");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#FF8C1A');
+            }
+        };
+
+        Blockly.Blocks['c_typedef'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("typedef")
+                    .appendField(new Blockly.FieldTextInput("unsigned int"), "ORIGINAL")
+                    .appendField(new Blockly.FieldTextInput("uint"), "ALIAS")
+                    .appendField(";");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#FF8C1A');
+            }
+        };
+
+        Blockly.Blocks['c_sizeof'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("sizeof(")
+                    .appendField(new Blockly.FieldTextInput("int"), "VAL")
+                    .appendField(")");
+                this.setOutput(true, null);
+                this.setColour('#FF8C1A');
+            }
+        };
+
+        Blockly.Blocks['c_number'] = {
+            init: function() {
+                this.appendDummyInput().appendField(new Blockly.FieldNumber(0), "NUM");
+                this.setOutput(true, "Number");
+                this.setColour('#FF8C1A');
+            }
+        };
+
+        Blockly.Blocks['c_string'] = {
+            init: function() {
+                this.appendDummyInput().appendField("\"").appendField(new Blockly.FieldTextInput("text"), "STR").appendField("\"");
+                this.setOutput(true, "String");
+                this.setColour('#FF8C1A');
+            }
+        };
+
+        Blockly.Blocks['c_if'] = {
+            init: function() {
+                this.appendValueInput("COND").setCheck(null).appendField("if (");
+                this.appendDummyInput().appendField(")");
+                this.appendStatementInput("IF_BODY").setCheck(null);
+                this.appendDummyInput().appendField("else");
+                this.appendStatementInput("ELSE_BODY").setCheck(null);
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#FFCC33');
+            }
+        };
+
+        Blockly.Blocks['c_switch'] = {
+            init: function() {
+                this.appendValueInput("COND").appendField("switch (");
+                this.appendDummyInput().appendField(")");
+                this.appendStatementInput("BODY").setCheck(null);
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#FFCC33');
+            }
+        };
+
+        Blockly.Blocks['c_case'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField(new Blockly.FieldDropdown([["case","case"], ["default","default"]]), "TYPE")
+                    .appendField(new Blockly.FieldTextInput("1"), "VAL")
+                    .appendField(":");
+                this.appendStatementInput("BODY").setCheck(null);
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#FFCC33');
+            }
+        };
+
+        Blockly.Blocks['c_while'] = {
+            init: function() {
+                this.appendValueInput("COND").appendField("while (");
+                this.appendDummyInput().appendField(")");
+                this.appendStatementInput("BODY").setCheck(null);
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#0FBD8C');
+            }
+        };
+
+        Blockly.Blocks['c_do_while'] = {
+            init: function() {
+                this.appendDummyInput().appendField("do {");
+                this.appendStatementInput("BODY").setCheck(null);
+                this.appendValueInput("COND").appendField("} while (");
+                this.appendDummyInput().appendField(");");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#0FBD8C');
+            }
+        };
+
+        Blockly.Blocks['c_for'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("for (int i = 0; i <")
+                    .appendField(new Blockly.FieldNumber(10), "LIMIT")
+                    .appendField("; i++)");
+                this.appendStatementInput("BODY").setCheck(null);
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#0FBD8C');
+            }
+        };
+
+        Blockly.Blocks['c_break'] = {
+            init: function() {
+                this.appendDummyInput().appendField("break;");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#FF6680');
+            }
+        };
+
+        Blockly.Blocks['c_continue'] = {
+            init: function() {
+                this.appendDummyInput().appendField("continue;");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#FF6680');
+            }
+        };
+
+        Blockly.Blocks['c_return'] = {
+            init: function() {
+                this.appendValueInput("VAL").setCheck(null).appendField("return");
+                this.appendDummyInput().appendField(";");
+                this.setPreviousStatement(true, null);
+                this.setColour('#FF6680');
+            }
+        };
+
+        Blockly.Blocks['c_goto'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("goto")
+                    .appendField(new Blockly.FieldTextInput("label"), "LABEL")
+                    .appendField(";");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#FF6680');
+            }
+        };
+
+        Blockly.Blocks['c_label'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("Label:")
+                    .appendField(new Blockly.FieldTextInput("label"), "LABEL");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour('#FF6680');
+            }
+        };
+
+        Blockly.Blocks['c_math'] = {
+            init: function() {
+                this.appendValueInput("A").setCheck(null);
+                this.appendDummyInput().appendField(new Blockly.FieldDropdown([["+","PLUS"], ["-","MINUS"], ["*","MULTIPLY"], ["/","DIVIDE"], ["%","MODULO"]]), "OP");
+                this.appendValueInput("B").setCheck(null);
+                this.setOutput(true, null);
+                this.setColour('#59C059');
+            }
+        };
+
+        Blockly.Blocks['c_compare'] = {
+            init: function() {
+                this.appendValueInput("A").setCheck(null);
+                this.appendDummyInput().appendField(new Blockly.FieldDropdown([["==","EQ"], ["!=","NEQ"], ["<","LT"], [">","GT"], ["<=","LTE"], [">=","GTE"]]), "OP");
+                this.appendValueInput("B").setCheck(null);
+                this.setOutput(true, null);
+                this.setColour('#59C059');
+            }
+        };
+
+        Blockly.Blocks['c_logic'] = {
+            init: function() {
+                this.appendValueInput("A").setCheck(null);
+                this.appendDummyInput().appendField(new Blockly.FieldDropdown([["&& (AND)","AND"], ["|| (OR)","OR"]]), "OP");
+                this.appendValueInput("B").setCheck(null);
+                this.setOutput(true, null);
+                this.setColour('#59C059');
+            }
+        };
+
+        // --- 2. Custom C Code Generator ---
+        
+        const CGenerator = new Blockly.Generator('C');
+        CGenerator.ORDER_ATOMIC = 0;
+        CGenerator.ORDER_NONE = 99;
+
+        // Traverse statements
+        CGenerator.scrub_ = function(block, code, opt_thisOnly) {
+            const nextBlock = block.nextConnection && block.nextConnection.targetBlock();
+            const nextCode = opt_thisOnly ? '' : CGenerator.blockToCode(nextBlock);
+            return code + nextCode;
+        };
+
+        // FIXED: Blockly v9+ requires generator functions to be registered in the .forBlock dictionary
+        CGenerator.forBlock['c_include'] = function(block) {
+            return `#include <${block.getFieldValue('LIB')}>\n`;
+        };
+
+        CGenerator.forBlock['c_main'] = function(block) {
+            const body = CGenerator.statementToCode(block, 'BODY');
+            return `int main() {\n${body}  return 0;\n}\n`;
+        };
+
+        CGenerator.forBlock['c_printf'] = function(block) {
+            return `printf("${block.getFieldValue('TEXT')}");\n`;
+        };
+
+        CGenerator.forBlock['c_declare'] = function(block) {
+            let storage = block.getFieldValue('STORAGE');
+            storage = storage === "auto" ? "" : storage + " ";
+            let modifier = block.getFieldValue('MODIFIER');
+            modifier = modifier === "" ? "" : modifier + " ";
+            const type = block.getFieldValue('TYPE');
+            const name = block.getFieldValue('NAME');
+            const val = CGenerator.valueToCode(block, 'VAL', CGenerator.ORDER_ATOMIC);
+            const assign = val ? ` = ${val}` : '';
+            return `${storage}${modifier}${type} ${name}${assign};\n`;
+        };
+
+        CGenerator.forBlock['c_struct_union_enum'] = function(block) {
+            const type = block.getFieldValue('TYPE');
+            const name = block.getFieldValue('NAME');
+            const body = CGenerator.statementToCode(block, 'BODY');
+            return `${type} ${name} {\n${body}};\n`;
+        };
+
+        CGenerator.forBlock['c_typedef'] = function(block) {
+            return `typedef ${block.getFieldValue('ORIGINAL')} ${block.getFieldValue('ALIAS')};\n`;
+        };
+
+        CGenerator.forBlock['c_sizeof'] = function(block) {
+            return [`sizeof(${block.getFieldValue('VAL')})`, CGenerator.ORDER_ATOMIC];
+        };
+
+        CGenerator.forBlock['c_number'] = function(block) {
+            return [block.getFieldValue('NUM'), CGenerator.ORDER_ATOMIC];
+        };
+
+        CGenerator.forBlock['c_string'] = function(block) {
+            return [`"${block.getFieldValue('STR')}"`, CGenerator.ORDER_ATOMIC];
+        };
+
+        CGenerator.forBlock['c_if'] = function(block) {
+            const cond = CGenerator.valueToCode(block, 'COND', CGenerator.ORDER_NONE) || '1';
+            const ifBody = CGenerator.statementToCode(block, 'IF_BODY');
+            const elseBody = CGenerator.statementToCode(block, 'ELSE_BODY');
+            let code = `if (${cond}) {\n${ifBody}}\n`;
+            if (elseBody) code += `else {\n${elseBody}}\n`;
+            return code;
+        };
+
+        CGenerator.forBlock['c_switch'] = function(block) {
+            const cond = CGenerator.valueToCode(block, 'COND', CGenerator.ORDER_NONE) || 'val';
+            const body = CGenerator.statementToCode(block, 'BODY');
+            return `switch (${cond}) {\n${body}}\n`;
+        };
+
+        CGenerator.forBlock['c_case'] = function(block) {
+            const type = block.getFieldValue('TYPE');
+            const val = block.getFieldValue('VAL');
+            const body = CGenerator.statementToCode(block, 'BODY');
+            if (type === 'default') return `default:\n${body}\n`;
+            return `case ${val}:\n${body}\n`;
+        };
+
+        CGenerator.forBlock['c_while'] = function(block) {
+            const cond = CGenerator.valueToCode(block, 'COND', CGenerator.ORDER_NONE) || '1';
+            const body = CGenerator.statementToCode(block, 'BODY');
+            return `while (${cond}) {\n${body}}\n`;
+        };
+
+        CGenerator.forBlock['c_do_while'] = function(block) {
+            const cond = CGenerator.valueToCode(block, 'COND', CGenerator.ORDER_NONE) || '1';
+            const body = CGenerator.statementToCode(block, 'BODY');
+            return `do {\n${body}} while (${cond});\n`;
+        };
+
+        CGenerator.forBlock['c_for'] = function(block) {
+            const limit = block.getFieldValue('LIMIT');
+            const body = CGenerator.statementToCode(block, 'BODY');
+            return `for (int i = 0; i < ${limit}; i++) {\n${body}}\n`;
+        };
+
+        CGenerator.forBlock['c_break'] = function(block) {
+            return `break;\n`;
+        };
+
+        CGenerator.forBlock['c_continue'] = function(block) {
+            return `continue;\n`;
+        };
+
+        CGenerator.forBlock['c_return'] = function(block) {
+            const val = CGenerator.valueToCode(block, 'VAL', CGenerator.ORDER_ATOMIC) || '';
+            return val ? `return ${val};\n` : `return;\n`;
+        };
+
+        CGenerator.forBlock['c_goto'] = function(block) {
+            return `goto ${block.getFieldValue('LABEL')};\n`;
+        };
+
+        CGenerator.forBlock['c_label'] = function(block) {
+            return `${block.getFieldValue('LABEL')}:\n`;
+        };
+
+        CGenerator.forBlock['c_math'] = function(block) {
+            const opMap = { 'PLUS': '+', 'MINUS': '-', 'MULTIPLY': '*', 'DIVIDE': '/', 'MODULO': '%' };
+            const op = opMap[block.getFieldValue('OP')];
+            const a = CGenerator.valueToCode(block, 'A', CGenerator.ORDER_ATOMIC) || '0';
+            const b = CGenerator.valueToCode(block, 'B', CGenerator.ORDER_ATOMIC) || '0';
+            return [`${a} ${op} ${b}`, CGenerator.ORDER_ATOMIC];
+        };
+
+        CGenerator.forBlock['c_compare'] = function(block) {
+            const opMap = { 'EQ': '==', 'NEQ': '!=', 'LT': '<', 'GT': '>', 'LTE': '<=', 'GTE': '>=' };
+            const op = opMap[block.getFieldValue('OP')];
+            const a = CGenerator.valueToCode(block, 'A', CGenerator.ORDER_ATOMIC) || '0';
+            const b = CGenerator.valueToCode(block, 'B', CGenerator.ORDER_ATOMIC) || '0';
+            return [`${a} ${op} ${b}`, CGenerator.ORDER_ATOMIC];
+        };
+
+        CGenerator.forBlock['c_logic'] = function(block) {
+            const opMap = { 'AND': '&&', 'OR': '||' };
+            const op = opMap[block.getFieldValue('OP')];
+            const a = CGenerator.valueToCode(block, 'A', CGenerator.ORDER_ATOMIC) || '1';
+            const b = CGenerator.valueToCode(block, 'B', CGenerator.ORDER_ATOMIC) || '1';
+            return [`${a} ${op} ${b}`, CGenerator.ORDER_ATOMIC];
+        };
+
+        // --- Blockly Built-in Variables & Procedures for C ---
+        CGenerator.forBlock['variables_get'] = function(block) {
+            return [block.getFieldValue('VAR').replace(/[^a-zA-Z0-9_]/g, '_'), CGenerator.ORDER_ATOMIC];
+        };
+
+        CGenerator.forBlock['variables_set'] = function(block) {
+            const val = CGenerator.valueToCode(block, 'VALUE', CGenerator.ORDER_ATOMIC) || '0';
+            return `${block.getFieldValue('VAR').replace(/[^a-zA-Z0-9_]/g, '_')} = ${val};\n`;
+        };
+
+        CGenerator.forBlock['procedures_defnoreturn'] = function(block) {
+            const funcName = block.getFieldValue('NAME').replace(/[^a-zA-Z0-9_]/g, '_');
+            const args = block.getVars().map(v => 'float ' + v.replace(/[^a-zA-Z0-9_]/g, '_'));
+            const branch = CGenerator.statementToCode(block, 'STACK');
+            return `void ${funcName}(${args.join(', ')}) {\n${branch}}\n\n`;
+        };
+
+        CGenerator.forBlock['procedures_defreturn'] = function(block) {
+            const funcName = block.getFieldValue('NAME').replace(/[^a-zA-Z0-9_]/g, '_');
+            const args = block.getVars().map(v => 'float ' + v.replace(/[^a-zA-Z0-9_]/g, '_'));
+            const branch = CGenerator.statementToCode(block, 'STACK');
+            const ret = CGenerator.valueToCode(block, 'RETURN', CGenerator.ORDER_NONE) || '0';
+            return `float ${funcName}(${args.join(', ')}) {\n${branch}  return ${ret};\n}\n\n`;
+        };
+
+        CGenerator.forBlock['procedures_callnoreturn'] = function(block) {
+            const funcName = block.getFieldValue('NAME').replace(/[^a-zA-Z0-9_]/g, '_');
+            const args = block.getVars().map((_, i) => CGenerator.valueToCode(block, 'ARG' + i, CGenerator.ORDER_ATOMIC) || '0');
+            return `${funcName}(${args.join(', ')});\n`;
+        };
+
+        CGenerator.forBlock['procedures_callreturn'] = function(block) {
+            const funcName = block.getFieldValue('NAME').replace(/[^a-zA-Z0-9_]/g, '_');
+            const args = block.getVars().map((_, i) => CGenerator.valueToCode(block, 'ARG' + i, CGenerator.ORDER_ATOMIC) || '0');
+            return [`${funcName}(${args.join(', ')})`, CGenerator.ORDER_ATOMIC];
+        };
+
+        CGenerator.forBlock['procedures_ifreturn'] = function(block) {
+            const cond = CGenerator.valueToCode(block, 'CONDITION', CGenerator.ORDER_NONE) || '0';
+            let code = `if (${cond}) {\n`;
+            if (block.hasReturnValue_) {
+                const val = CGenerator.valueToCode(block, 'VALUE', CGenerator.ORDER_NONE) || '0';
+                code += `  return ${val};\n`;
+            } else {
+                code += `  return;\n`;
+            }
+            code += `}\n`;
+            return code;
+        };
+
+        // --- 3. Initialization ---
+        
+        // Inject Blockly
+        const workspace = Blockly.inject('blocklyDiv', {
+            toolbox: document.getElementById('toolbox'),
+            theme: Blockly.Themes.Classic,
+            scrollbars: true,
+            trashcan: true
+        });
+
+        // Add a default starter block
+        const defaultXml = '<xml><block type="c_include" x="20" y="20"><next><block type="c_main"></block></next></block></xml>';
+        // FIXED: Blockly.Xml.textToDom is deprecated in newer versions. Use Blockly.utils.xml.textToDom instead.
+        Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(defaultXml), workspace);
+
+        // Real-time Code Generation
+        function updateCode() {
+            let code = CGenerator.workspaceToCode(workspace);
+            
+            // Format indentation slightly for display
+            code = code.replace(/\n/g, '\n').replace(/ {4}/g, '    ');
+            
+            const codeOutput = document.getElementById('codeOutput');
+            codeOutput.textContent = code;
+            
+            // Trigger syntax highlight
+            delete codeOutput.dataset.highlighted;
+            hljs.highlightElement(codeOutput);
+        }
+
+        workspace.addChangeListener(updateCode);
+        
+        // Handle Resize
+        window.addEventListener('resize', function() {
+            Blockly.svgResize(workspace);
+        });
+
+        // Copy to clipboard utility
+        function copyCode() {
+            const code = document.getElementById('codeOutput').textContent;
+            navigator.clipboard.writeText(code);
+        }
+
+        // --- Workspace Save & Load ---
+        function saveWorkspace() {
+            const state = Blockly.serialization.workspaces.save(workspace);
+            const blob = new Blob([JSON.stringify(state, null, 2)], {type: 'application/json'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'blockc_workspace.json';
+            a.click();
+        }
+
+        document.getElementById('workspaceUpload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const state = JSON.parse(event.target.result);
+                    Blockly.serialization.workspaces.load(state, workspace);
+                } catch (error) {
+                    console.error("Failed to parse workspace JSON", error);
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = ""; // Reset input so the same file can be reloaded if needed
+        });
+
+        // --- 4. Dynamic Header Importer ---
+        document.getElementById('headerUpload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = e.target.result;
+                parseHeaderAndAddBlocks(content, file.name);
+            };
+            reader.readAsText(file);
+        });
+
+        function parseHeaderAndAddBlocks(content, filename) {
+            // Regex to capture C function prototypes (supports optional RLAPI or extern macros)
+            const regex = /^\s*(?:RLAPI\s+|extern\s+)?([a-zA-Z_][a-zA-Z0-9_\s\*]*?)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)\s*;/gm;
+            let match;
+            let blockTypes = [];
+
+            while ((match = regex.exec(content)) !== null) {
+                const returnType = match[1].trim();
+                const funcName = match[2].trim();
+                const paramsRaw = match[3].trim();
+                
+                const params = paramsRaw.split(',').map(p => p.trim()).filter(p => p && p !== 'void');
+                const blockName = 'imported_' + funcName;
+                
+                // 1. Build Block JSON definition
+                let blockJson = {
+                    "type": blockName,
+                    "message0": funcName,
+                    "args0": [],
+                    "colour": "#9966FF",
+                    "tooltip": `${returnType} ${funcName}(${paramsRaw})`
+                };
+
+                params.forEach((param, index) => {
+                    blockJson.message0 += (index === 0 ? " " : ", ") + param + " %" + (index + 1);
+                    blockJson.args0.push({
+                        "type": "input_value",
+                        "name": `ARG${index}`
+                    });
+                });
+
+                if (blockJson.args0.length === 0) delete blockJson.args0;
+
+                if (returnType !== "void") {
+                    blockJson.output = null;
+                } else {
+                    blockJson.previousStatement = null;
+                    blockJson.nextStatement = null;
+                }
+
+                // 2. Register Block Definition
+                Blockly.Blocks[blockName] = {
+                    init: function() { this.jsonInit(blockJson); }
+                };
+
+                // 3. Register Code Generator
+                CGenerator.forBlock[blockName] = function(block) {
+                    const argsCode = params.map((_, i) => CGenerator.valueToCode(block, `ARG${i}`, CGenerator.ORDER_ATOMIC) || '0').join(', ');
+                    const code = `${funcName}(${argsCode});\n`;
+                    return returnType !== "void" ? [code.trim(), CGenerator.ORDER_ATOMIC] : code;
+                };
+
+                blockTypes.push(blockName);
+            }
+
+            // 4. Add to Toolbox and Reload
+            const statusEl = document.getElementById('importStatus');
+            if (blockTypes.length > 0) {
+                const toolboxXml = document.getElementById('toolbox');
+                const category = document.createElement('category');
+                category.setAttribute('name', filename);
+                category.setAttribute('colour', '#9966FF');
+
+                blockTypes.forEach(type => {
+                    const block = document.createElement('block');
+                    block.setAttribute('type', type);
+                    category.appendChild(block);
+                });
+
+                toolboxXml.appendChild(category);
+                workspace.updateToolbox(toolboxXml);
+                
+                statusEl.textContent = `Imported ${blockTypes.length} blocks!`;
+                statusEl.classList.remove('hidden', 'text-red-600');
+                statusEl.classList.add('text-green-600');
+            } else {
+                statusEl.textContent = `No functions found in ${filename}.`;
+                statusEl.classList.remove('hidden', 'text-green-600');
+                statusEl.classList.add('text-red-600');
+            }
+            
+            setTimeout(() => statusEl.classList.add('hidden'), 4000);
+            
+            // Reset input so the same file can be uploaded again if needed
+            document.getElementById('headerUpload').value = "";
+        }
+
+        // Initial generation
+        updateCode();
+    </script>
+</body>
+</html>
